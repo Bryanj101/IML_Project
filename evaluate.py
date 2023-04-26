@@ -1,49 +1,58 @@
 import torch
-from transformers import BertForSequenceClassification, BertTokenizer, Trainer, TrainingArguments
+from transformers import BertForSequenceClassification, BertTokenizer, BertConfig
 from torch.utils.data import DataLoader
-torch.cuda.set_per_process_memory_fraction(0.8, 0)
-# Load the PyTorch datasets
-train_dataset = torch.load('ML_project\ml_train_dataset.pt')
-val_dataset = torch.load('ML_project\ml_val_dataset.pt')
-test_dataset = torch.load('ML_project\ml_test_dataset.pt')
+from sklearn.metrics import accuracy_score
+
+# Clear the GPU cache
+torch.cuda.empty_cache()
+
+# Instantiate the BERT tokenizer
+tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+train_dataset = torch.load('ml_train_dataset.pt')
+val_dataset = torch.load('ml_val_dataset.pt')
+test_dataset = torch.load('ml_test_dataset.pt')
 
 # Instantiate the BERT model
-model = BertForSequenceClassification.from_pretrained('ML_project\ml_bert_model', num_labels=5)
+config = BertConfig.from_pretrained('bert-base-uncased', num_labels=6, label_first=False, trainable=True, max_length = 128)
+model = BertForSequenceClassification.from_pretrained('ml_torch_model_state_dict', config=config)
 model.cuda()
 
 # Define the batch size for training and evaluation
-batch_size = 4
+batch_size = 32
 
 # Create PyTorch data loaders from the datasets
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=batch_size)
 test_loader = DataLoader(test_dataset, batch_size=batch_size)
 
-# Define the training arguments
-training_args = TrainingArguments(
-    output_dir='./results',
-    num_train_epochs=0,
-    per_device_train_batch_size=batch_size,
-    per_device_eval_batch_size=batch_size,
-    evaluation_strategy='epoch',
-    metric_for_best_model='accuracy',
-    save_strategy='epoch',
-    )
+# Define the loss function for training the model
+loss_fn = torch.nn.CrossEntropyLoss()
 
-# Instantiate the Trainer class
-trainer = Trainer(
-    model=model,
-    args=training_args,
-    train_dataset=None,
-    eval_dataset=val_dataset,
-    data_collator=lambda data: {'input_ids': torch.stack([item[0] for item in data]),
-                                'attention_mask': torch.stack([item[1] for item in data]),
-                                'labels': torch.stack([item[2] for item in data])},
-    compute_metrics=lambda pred: {'accuracy': (pred.predictions.argmax(axis=1) == pred.label_ids).mean()}
-)
+model.eval()
+with torch.no_grad():
+    y_true = []
+    y_pred = []
+    total_loss = 0
+    for batch in test_loader:
+        # Extract the input features and labels from the batch
+        input_ids, attention_mask, labels = batch
 
-# Train the model
-#trainer.train()
+        # Move the input tensors to the GPU
+        input_ids = input_ids.cuda()
+        attention_mask = attention_mask.cuda()
+        labels = labels.cuda()
 
-# Evaluate the model on the test set
-print(trainer.evaluate(test_dataset))
+        # Forward pass through the model
+        outputs = model(input_ids, attention_mask=attention_mask)
+        loss = loss_fn(outputs.logits, labels)
+        total_loss += loss.item()
+
+        # Compute the accuracy of the model predictions
+        _, predicted_labels = torch.max(outputs.logits, dim=1)
+        y_true.extend(labels.cpu().numpy())
+        y_pred.extend(predicted_labels.cpu().numpy())
+
+    accuracy = accuracy_score(y_true, y_pred)
+    
+    avg_loss = total_loss / len(test_loader)
+    print(f'Test Loss: {avg_loss:.3f} | Test Acc: {accuracy:.3f}')

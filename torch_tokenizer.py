@@ -1,12 +1,11 @@
 import torch
 from transformers import BertTokenizer
 import pandas as pd
-import json
 import gzip
 
 # Load the appliance dataset
-with gzip.open('ML_project\Appliances.json.gz', 'r') as f:
-    df = pd.read_json(f, lines=True, nrows=100000)
+with gzip.open('Appliances.json.gz', 'r') as f:
+    df = pd.read_json(f, lines=True)
 
 # Keep only the 'overall' and 'reviewText' columns
 df = df[['overall', 'reviewText']]
@@ -28,11 +27,11 @@ test_df = test_df.drop(val_df.index)
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
 
 # Tokenize the text data and convert it to input features for BERT
-train_encodings = tokenizer(list(train_df['reviewText']), truncation=True, padding=True, return_tensors='pt')
-val_encodings = tokenizer(list(val_df['reviewText']), truncation=True, padding=True, return_tensors='pt')
-test_encodings = tokenizer(list(test_df['reviewText']), truncation=True, padding=True, return_tensors='pt')
+train_encodings = tokenizer(list(train_df['reviewText']), max_length=128, truncation=True, padding=True, return_tensors='pt')
+val_encodings = tokenizer(list(val_df['reviewText']), max_length=128, truncation=True, padding=True, return_tensors='pt')
+test_encodings = tokenizer(list(test_df['reviewText']), max_length=128, truncation=True, padding=True, return_tensors='pt')
 
-# Convert the sentiment labels to numerical values (0 to 4)
+# Convert the sentiment labels to numerical values (1 to 5)
 train_labels = torch.tensor(list(train_df['sentiment']))
 val_labels = torch.tensor(list(val_df['sentiment']))
 test_labels = torch.tensor(list(test_df['sentiment']))
@@ -43,7 +42,7 @@ val_dataset = torch.utils.data.TensorDataset(val_encodings['input_ids'], val_enc
 test_dataset = torch.utils.data.TensorDataset(test_encodings['input_ids'], test_encodings['attention_mask'], test_labels)
 
 # Save the PyTorch datasets
-torch.save(train_dataset, 'ML_project\ml_train_dataset.pt')
-torch.save(val_dataset, 'ML_project\ml_val_dataset.pt')
-torch.save(test_dataset, 'ML_project\ml_test_dataset.pt')
+torch.save(train_dataset, 'ml_train_dataset.pt')
+torch.save(val_dataset, 'ml_val_dataset.pt')
+torch.save(test_dataset, 'ml_test_dataset.pt')
 
